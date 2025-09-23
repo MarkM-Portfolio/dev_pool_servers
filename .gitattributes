@@ -1,0 +1,4 @@
+*.gitignore linguist-language=Git linguist-vendored=false
+*.log linguist-language=Log linguist-vendored=false
+*.sh linguist-language=Bash linguist-vendored=false
+*.txt linguist-language=Text File linguist-vendored=false

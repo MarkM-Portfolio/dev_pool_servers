@@ -1,0 +1,350 @@
+Original Source: CNX-19503
+
+RUN AS ROOT USER
+sudo su - root
+COPY .SSH KEYS, AUTHORIZED KEYS to devalma /root/.ssh/* then
+chown -R root:root /root/.ssh
+
+
+CHANGE HOSTNAME
+hostnamectl set-hostname devalma1.cnx.cwp.pnp-hcl.com
+#hostnamectl set-hostname lcautoX.cnx.cwp.pnp-hcl.com
+get_ipv4=$(ip -4 addr show eth0 | grep -oP "(?<=inet ).*(?=/)")
+sed -i "/$get_ipv4/d" /etc/hosts
+sed -i "$ a $get_ipv4 `hostname`" /etc/hosts
+
+
+CREATE LCUSER HERE
+useradd -m lcuser
+chmod 700 /home/lcuser/.ssh
+chown -R lcuser:lcuser /home/lcuser/.ssh
+usermod -aG wheel lcuser
+
+
+CREATE DB2 USER HERE – NO NEED IF USE ANSIBLE TO INSTALL
+useradd -m db2inst1
+mkdir -p /home/db2inst1/.vnc/passwd
+usermod -aG wheel db2inst1
+
+
+UPGRADE lib/modules FOR ALMA LINUX 9
+dnf -y update
+dnf install -y epel-release mod_ssl
+dnf install @Workstation --exclude=hyperv-daemons,open-vm-tools-desktop,qemu-guest-agent,spice-vdagent,gnome-classic-session
+rm -rf 5.14.0-162.6.1.el9_1.x86_64
+cp -r 5.14.0-162.18.1.el9_1.x86_64 5.14.0-162.6.1.el9_1.x86_64
+reboot
+
+
+MOUNT MLSA2
+mkdir -p /mnt/mlsa2
+mount -t cifs -o domain=sgw-E713F48E,username=smbguest,password=connections,vers=2.0 //mlsa2.cnx.cwp.pnp-hcl.com/aws-hcl-cwp-hawkins-mlsa2 /mnt/mlsa2
+echo "//mlsa2.cnx.cwp.pnp-hcl.com/aws-hcl-cwp-hawkins-mlsa2 /mnt/mlsa2  cifs  domain=sgw-E713F48E,username=smbguest,vers=2.0,password=connections,soft,rw  0 0" >> /etc/fstab
+
+
+INSTALL NVM for Node16 and Node18
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+nvm list-remote
+nvm install 16 # to use Node16
+nvm install 18 # to use Node18
+nvm use 16 # default to Node16
+
+Add NVM to LCUSER profile
+sudo su - lcuser -c 'echo -e "export NVM_DIR="/root/.nvm"" >> ~/.bash_profile'
+sudo su - lcuser -c 'echo -e "[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm" >> ~/.bash_profile'
+sudo su - lcuser -c 'echo -e "[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion" >> ~/.bash_profile'
+sudo su - lcuser -c 'source ~/.bash_profile'
+
+
+INSTALL DOCKER & CTR
+dnf config-manager --add-repo=https://download.docker.com/linux/centos/docker-ce.repo
+dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+systemctl disable docker # disable docker during startup by default
+
+INSTALL AUTOFS
+dnf install -y autofs
+
+INSTALL IHS
+vi /etc/systemd/system/ihs.service
+
+```
+# IBM HTTP Server (IHS)
+
+[Unit]
+Description=IHS 8.5.5.10
+After=syslog.target network.target
+
+[Service]
+Type=forking
+ExecStart=/opt/IBM/HTTPServer/bin/apachectl -k start
+ExecReload=/opt/IBM/HTTPServer/bin/apachectl -k restart
+ExecStop=/opt/IBM/HTTPServer/bin/apachectl -k stop
+Restart=always
+
+[Install]
+WantedBy=default.target
+```
+
+ADD TO PATH >> /usr/local/bin
+echo -e "\nexport PATH=$PATH:/usr/local/bin" >> /root/.bashrc
+source /root/.bashrc
+ADD THIS TO Resource Environment for ic360 in wasadmin console
+wkhtmltopdf.command.exec | /usr/local/bin
+wkhtmltopdf.command.environment | LIBPATH=;LD_LIBRARY_PATH=;
+
+(Optional)
+ALSO CHECK FONTS FOLDER libfontconfig.so not present..
+/lib/libfontconfig.so.1
+/lib/libfontconfig.so.1.11.1
+
+--->
+curl -o /tmp/fontconfig-2.14.0-2.el9_1.i686.rpm -L \
+https://repo.almalinux.org/almalinux/9/AppStream/x86_64/os/Packages/fontconfig-2.14.0-2.el9_1.i686.rpm && \
+rpm -Uv --force /tmp/fontconfig-2.14.0-2.el9_1.i686.rpm && \
+
+error: Failed dependencies:
+    libfreetype.so.6 is needed by fontconfig-2.14.0-2.el9_1.i686
+    libxml2.so.2 is needed by fontconfig-2.14.0-2.el9_1.i686
+    libxml2.so.2(LIBXML2_2.4.30) is needed by fontconfig-2.14.0-2.el9_1.i686
+    libxml2.so.2(LIBXML2_2.6.0) is needed by fontconfig-2.14.0-2.el9_1.i686
+--->
+curl -o /tmp/freetype-2.10.4-9.el9.i686.rpm -L \
+https://repo.almalinux.org/almalinux/9/BaseOS/x86_64/os/Packages/freetype-2.10.4-9.el9.i686.rpm && \
+rpm -Uv --force /tmp/freetype-2.10.4-9.el9.i686.rpm && \
+
+error: Failed dependencies:
+    libbrotlidec.so.1 is needed by freetype-2.10.4-9.el9.i686
+    libbz2.so.1 is needed by freetype-2.10.4-9.el9.i686
+    libharfbuzz.so.0 is needed by freetype-2.10.4-9.el9.i686
+    libpng16.so.16 is needed by freetype-2.10.4-9.el9.i686
+    libpng16.so.16(PNG16_0) is needed by freetype-2.10.4-9.el9.i686
+---> ###
+curl -o /tmp/libbrotli-1.0.9-6.el9.x86_64.rpm -L \
+https://repo.almalinux.org/almalinux/9/BaseOS/x86_64/os/Packages/libbrotli-1.0.9-6.el9.x86_64.rpm && \
+rpm -Uv --force /tmp/libbrotli-1.0.9-6.el9.x86_64.rpm && \
+--->
+curl -o /tmp/bzip2-libs-1.0.8-8.el9.i686.rpm -L \
+https://repo.almalinux.org/almalinux/9/BaseOS/x86_64/os/Packages/bzip2-libs-1.0.8-8.el9.i686.rpm && \
+rpm -Uv --force /tmp/bzip2-libs-1.0.8-8.el9.i686.rpm && \
+--->
+curl -o /tmp/libpng-1.6.37-12.el9.i686.rpm -L \
+https://repo.almalinux.org/almalinux/9/BaseOS/x86_64/os/Packages/libpng-1.6.37-12.el9.i686.rpm && \
+rpm -Uv --force /tmp/libpng-1.6.37-12.el9.i686.rpm && \
+---> ###
+curl -o /tmp/harfbuzz-2.7.4-8.el9.x86_64.rpm -L \
+https://repo.almalinux.org/almalinux/9/BaseOS/x86_64/os/Packages/harfbuzz-2.7.4-8.el9.x86_64.rpm && \
+rpm -Uv --force /tmp/harfbuzz-2.7.4-8.el9.x86_64.rpm && \
+
+
+
+
+    https://repo.almalinux.org/almalinux/9/AppStream/x86_64/os/Packages/fontconfig-2.14.0-2.el9_1.i686.rpm
+
+
+DOWNLOAD LC-INSTALLER GIT REPO
+cd /root
+git clone git@git.cwp.pnp-hcl.com:conn-automation/lc-installer.git
+mv /root/lc-installer /root/lc-update
+
+
+MAYBE INSTALL WAS, TDI AND DB2 HERE?????
+dnf install -y ansible
+cd /root
+git clone git@git.cwp.pnp-hcl.com:conn-automation/deployment-ansible.git
+
+
+Edit all.yml and inventory file for db2 to use host devalma1.cnx.cwp.pnp-hcl.com
+sed -i "s/connections.example.com/`hostname`/g" /root/deployment-ansible/ansible/environments/examples/cnx8/db2/group_vars/all.yml
+sed -i "s/db1.internal.example.com/`hostname`/g" /root/deployment-ansible/ansible/environments/examples/cnx8/db2/inventory.ini
+sed -i "s/docs1.internal.example.com/`hostname`/g" /root/deployment-ansible/ansible/environments/examples/cnx8/db2/inventory.ini
+sed -i "s/connections1.internal.example.com/`hostname`/g" /root/deployment-ansible/ansible/environments/examples/cnx8/db2/inventory.ini
+sed -i "s/installer1.internal.example.com/c7lb1.cnx.cwp.pnp-hcl.com/g" /root/deployment-ansible/ansible/environments/examples/cnx8/db2/inventory.ini
+
+
+Change db2 path to /opt/ibm
+sed -i "s/opt\/IBM/opt\/ibm/g" /root/deployment-ansible/ansible/roles/third_party/ibm/db2-install/vars/main.yml
+
+
+Run playbook to install db2
+cd /root/deployment-ansible/ansible
+ansible-playbook -i environments/examples/cnx8/db2/inventory.ini playbooks/third_party/setup-db2.yml
+
+
+TEST LATER IF NOT WORKING NEED TDI MAYBE???
+#ansible-playbook -i environments/examples/cnx8/db2/inventory.ini playbooks/third_party/setup-db2.yml playbooks/third_party/setup-tdi.yml
+
+
+DOWNLOAD CONNECTIONS KIT
+/root/lc-update/bin/get-build.sh -B IC10.0_Connections
+
+
+CREATE CFG.PY (Get from pool server)
+vi /root/lc-update/cfg.py
+
+
+CHANGE Centos7 rpm install wkhtmltopdf to Alma Linux9
+
+if [ `cat /etc/os-release | grep CPE_NAME | tr -d /,\" | cut -d : -f4,4-5` == almalinux:9 ]; then
+   echo "NEW POOL SERVER detected.."
+   curl -o /tmp/wkhtmltox-0.12.6.1-2.almalinux9.x86_64.rpm -L \
+   https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox-0.12.6.1-2.almalinux9.x86_64.rpm && \
+   rpm -Uv --force /tmp/wkhtmltox-0.12.6.1-2.almalinux9.x86_64.rpm && \
+   rm -f /tmp/wkhtmltox-0.12.6.1-2.almalinux9.x86_64.rpm
+else
+   echo "OLD POOL SERVER detected.."
+   curl -o /tmp/wkhtmltox-0.12.6-1.centos7.x86_64.rpm -L \
+   https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.centos7.x86_64.rpm && \
+   rpm -Uv --force /tmp/wkhtmltox-0.12.6-1.centos7.x86_64.rpm && \
+   rm -f /tmp/wkhtmltox-0.12.6-1.centos7.x86_64.rpm
+fi
+
+
+RUN REFRESH POOL SCRIPT
+rm -rf /var/cache/dnf /var/lib/rpm/.rpm.lock
+mkdir /data
+#/root/lc-update/bin/refresh_pool.sh -m <MASTER_HOST> -e dev,pink
+/root/lc-update/bin/refresh_pool.sh -m lcauto2.cnx.cwp.pnp-hcl.com -e dev,pink -d
+
+
+DEPLOY CONNECTIONS
+su - lcuser -c "/root/lc-update/bin/lc-install.sh -host devalma1.cnx.cwp.pnp-hcl.com -user wasadmin -password password"
+
+
+TO RESET ### (Not Final)
+
+
+DOWNLOAD DASHBOARD GIT REPO
+cd /home/mmonteros
+git clone git@git.cwp.pnp-hcl.com:conn-automation/dashboard.git
+
+
+CHECK IN icautomation
+ssh git@icautomation.cnx.cwp.pnp-hcl.com
+
+
+RUN VM_MANAGER SCRIPT
+#sudo /opt/dashboard_r6/
+#sudo /home/mmonteros/dashboard/lib/scripts/vmManager.sh reset `hostname`
+./vmManager.sh checkout devalma1.cnx.cwp.pnp-hcl.com
+
+
+RUN REFRESH_POOL SCRIPT
+sudo /home/lcuser/lc-update/bin/refresh_pool.sh -m <MASTER_HOST> -e dev,pink
+DISABLE firewalld
+
+
+
+### TO RESET ###
+
+# DOWNLOAD DASHBOARD GIT REPO
+cd /home/mmonteros
+git clone git@git.cwp.pnp-hcl.com:conn-automation/dashboard.git
+
+# CHECK IN icautomation 
+ssh git@icautomation.cnx.cwp.pnp-hcl.com
+
+# RUN VM_MANAGER SCRIPT
+#sudo /opt/dashboard_r6/
+#sudo /home/mmonteros/dashboard/lib/scripts/vmManager.sh reset `hostname`
+./vmManager.sh checkout devalma1.cnx.cwp.pnp-hcl.com
+
+# RUN REFRESH_POOL SCRIPT
+sudo /home/lcuser/lc-update/bin/refresh_pool.sh -m <MASTER_HOST> -e dev,pink
+
+
+
+
+
+
+/opt/IBM/HTTPServer/bin/httpd: No such file or directory
+
+#Install HTTPServer
+
+
+
+
+
+Here is my progress:
+•   installed DB2 using ansible 
+•   commented out places in refresh_pool.sh that would overwrite /opt/ibm/db2 and /home/db2inst1   (look for "SYEE" in the script, also temporarily commented out the rsync since the folders are already copied over so not wasting time copying again every time) 
+•   refresh_pool script expects there is a db backup, so copied /home/db2inst1/db-backups from another VM 
+•   mkdir /data/db2, chown to db2inst1, because it's also expected to be there 
+•   ran refresh_pool.sh
+     - it restored the databases from the V11.1 backup and upgraded them to the V11.5 version, but because of that the refresh_pool script stopped thinking there was an error restoring databases.   
+•   I decided to create the database from scratch and make a new backup in /home/db2inst1/db-backups. Also made an extra copy in db-backups-new just in case. 
+         cp -r /home/lcuser/lc-update/xkit/connections.sql ~/
+         /home/lcuser/lc-update/bin/create_db.sh -a
+         /home/lcuser/lc-update/bin/create_db.sh -b
+•   ran refresh_pool.sh again, it was able to do db restore successfully.  Then ended with this error:
+Starting IHS ...
+httpd: Syntax error on line 923 of /opt/IBM/HTTPServer/conf/httpd.conf: Cannot load /opt/IBM/WebSphere/Plugins/bin/64bits/mod_was_ap22_http.so into server: libnsl.so.1: cannot open shared object file: No such file or directory
+[2023-03-10 01:03:16] Rrefresh-pool run into errors, exit code 2
+Apply the fix per domainutilitycmd fails to start on Red Hat Linux 8.x with an error "error while loading shared libraries: libnsl.so.1: cannot open shared object file: No such file or directory" (tibco.com) 
+•   ran refresh_pool.sh -p password -w password
+and IT FINISHED!!!
+
+BtrFS is not installed.
+[2023-03-10 01:40:21] Refresh-pool finished with exit code 0
+ 
+BUT - https://devalma1.cnx.cwp.pnp-hcl.com/homepage does not go anywhere.  Please pick up from here.
+
+[9:47 AM] Sabrina Yee
+ah ha - it's because firewalld was enabled.  I disabled it.  Now the login page can load but missing libraries it seems.
+
+[9:55 AM] Sabrina Yee
+found the prob, the default V11.1 jdbc driver path was used so cnx can't connect to the dbs.   
+Need to find out what code sets "dbDriverPath" is set in /home/lcuser/lc-update/cfg.py and change it to : "/opt/ibm/db2/java"
+
+[10:46 AM] Sabrina Yee
+ok I ended up manually fixing the jdbc driver path found in the  /opt/IBM/WebSphere/AppServer/profiles/AppSrv01/config/cells/bvt1Node01Cell folder (2 files).  Created a loose end list in Info to fix it later.
+ 
+Now all jdbc database can connect except this:
+java.sql.SQLException: Failed to create database '/opt/IBM/WebSphere/AppServer/profiles/AppSrv01/databases/com.ibm.ws.sib/bvt1Node01.server1-ConnectionsBus-311A5CCEDB05FA10', see the next exception for details. DSRA0010E: SQL State = XJ041, Error Code = 40,000
+and Connections got a blank page after logged in.  Seeing this in SystemOut:
+[3/10/23 2:37:07:245 GMT] 000001ef TabInfoInterc E com.ibm.lconn.homepage.web.interceptor.TabInfoInterceptor getTabInstanceIdRequestParam CLFRQ0355E: It is not possible to retrieve the tab instance ID. An error occurred while getting the internal ID of the authenticated user from the session.
+                                 com.ibm.lconn.homepage.web.WebException: CLFRQ0355E: It is not possible to retrieve the tab instance ID. An error occurred while getting the internal ID of the authenticated user from the session. 
+Calling it a night.  Please pick it up from here.  We're getting close!
+ 
+Note:  I commented out some steps in refresh_pool to speed up rerunning since they have been run and no need to run again, but if you want to run from stretch please uncomment the ones with comment "temp" comment out.
+Join conversation
+
+
+# SABRINA FINAL STEPS
+Adding the notes sent via chat to get the Blue stack running:
+
+installed DB2 using ansible
+ 
+commented out places in refresh_pool.sh that would overwrite /opt/ibm/db2 and /home/db2inst1   (look for "SYEE" in the script, also temporarily commented out the rsync since the folders are already copied over so not wasting time copying again every time) 
+refresh_pool script expects there is a db backup, so copied /home/db2inst1/db-backups from another VM 
+mkdir /data/db2, chown to db2inst1, because it's also expected to be there 
+ran refresh_pool.sh
+     - it restored the databases from the V11.1 backup and upgraded them to the V11.5 version, but because of that the refresh_pool script stopped thinking there was an error restoring databases.
+I decided to create the database from scratch and make a new backup in /home/db2inst1/db-backups. Also made an extra copy in db-backups-new just in case. 
+         cp -r /home/lcuser/lc-update/xkit/connections.sql ~/
+         /home/lcuser/lc-update/bin/create_db.sh -d              (drop dbs)
+         /home/lcuser/lc-update/bin/create_db.sh                   (create)
+         /home/lcuser/lc-update/bin/create_db.sh -b -C         (backup)
+installed SDI via ansible and manually upgraded to FP8
+ran Profiles population then replace database backup
+ran refresh_pool.sh again, it was able to do db restore successfully.  Then ended with this error:
+Starting IHS ...
+httpd: Syntax error on line 923 of /opt/IBM/HTTPServer/conf/httpd.conf: Cannot load /opt/IBM/WebSphere/Plugins/bin/64bits/mod_was_ap22_http.so into server: libnsl.so.1: cannot open shared object file: No such file or directory
+[2023-03-10 01:03:16] Rrefresh-pool run into errors, exit code 2
+
+Apply the fix per domainutilitycmd fails to start on Red Hat Linux 8.x with an error "error while loading shared libraries: libnsl.so.1: cannot open shared object file: No such file or directory" (tibco.com) 
+
+ran refresh_pool.sh -p password -w password
+and IT FINISHED!!!
+disable firewalld
+the default V11.1 jdbc driver path was used so cnx can't connect to the dbs.
+Need to find out what code sets "dbDriverPath" is set in /home/lcuser/lc-update/cfg.py and change it to : "/opt/ibm/db2/java"
+I ended up manually fixing the jdbc driver path found in the  /opt/IBM/WebSphere/AppServer/profiles/AppSrv01/config/cells/bvt1Node01Cell folder (2 files).  
+Created a loose end list in Info to fix it later.
+
+Note:  I commented out some steps in refresh_pool to speed up rerunning since they have been run and no need to run again, but if you want to run from stretch please uncomment the ones with comment "temp" comment out.
+
+Found error in SystemOut.log
+CLFRT0062E: Validation fails for default value en_DK for parameter Locale. Check default values for service parameters
+
+tried setting system locale to LANG=en_US.UTF-8 but didn't help.  Ended up setting it via WAS jvm per CNX-1525.
+Instructions: How to change the display language in WebSphere Portal log files without changing the locale in OS? (hcltechsw.com)
